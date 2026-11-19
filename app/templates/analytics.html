@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block page_subtitle %}Workspace / System Analytics{% endblock %}
+
+{% block content %}
+<div class="page-container">
+
+    <div class="page-header">
+        <div>
+            <h1>Lab Analytics & Statistics</h1>
+            <p>Usage metrics, concurrency utilization, and workstation allocation trends.</p>
+        </div>
+        <span class="system-status">Real-time Metrics</span>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p>Total Allocations Handled</p>
+            <h2 id="analyticsTotalAllocations">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Lab Occupancy Rate</p>
+            <h2 id="analyticsOccupancyRate" style="color: var(--primary);">0%</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Completed Logouts</p>
+            <h2 id="analyticsTotalLogouts" style="color: #DC4545;">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Automatic FIFO Dispatches</p>
+            <h2 id="analyticsTotalReassigned" style="color: var(--accent);">0</h2>
+        </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="charts-grid">
+
+        <!-- Chart 1: Workstation Status (Occupied vs Available) -->
+        <div class="dashboard-section chart-card">
+            <h2>Occupied vs Available Workstations</h2>
+            <p class="chart-subtitle">Real-time lab capacity breakdown</p>
+            <div class="chart-wrapper">
+                <canvas id="occupancyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Chart 2: Usage Count Per Workstation -->
+        <div class="dashboard-section chart-card">
+            <h2>Workstation Usage Frequency</h2>
+            <p class="chart-subtitle">Cumulative allocations assigned per workstation</p>
+            <div class="chart-wrapper">
+                <canvas id="workstationUsageChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Chart 3: Event Actions Distribution -->
+    <div class="dashboard-section" style="margin-top: 25px;">
+        <h2>Allocation Action Distribution</h2>
+        <p class="chart-subtitle">Breakdown of system events (Initial Allocation, Voluntary Logout, FIFO Reassignment)</p>
+        <div class="chart-wrapper-wide">
+            <canvas id="actionsChart"></canvas>
+        </div>
+    </div>
+
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+let occupancyChartInstance = null;
+let usageChartInstance = null;
+let actionsChartInstance = null;
+
+async function loadAnalytics() {
+    try {
+        const response = await fetch("/api/analytics");
+        const data = await response.json();
+
+        // Update statistics cards
+        document.getElementById("analyticsTotalAllocations").textContent = data.total_allocations;
+        document.getElementById("analyticsTotalLogouts").textContent = data.total_logouts;
+        document.getElementById("analyticsTotalReassigned").textContent = data.total_reassigned;
+
+        const occupancyRate = Math.round((data.occupied_count / data.total_computers) * 100);
+        document.getElementById("analyticsOccupancyRate").textContent = `${occupancyRate}%`;
+
+        // 1. Occupancy Doughnut Chart
+        const occCtx = document.getElementById("occupancyChart").getContext("2d");
+        if (occupancyChartInstance) occupancyChartInstance.destroy();
+
+        occupancyChartInstance = new Chart(occCtx, {
+            type: "doughnut",
+            data: {
+                labels: ["Occupied Workstations", "Available Workstations"],
+                datasets: [{
+                    data: [data.occupied_count, data.available_count],
+                    backgroundColor: ["#DC4545", "#26965C"],
+                    borderWidth: 2,
+                    borderColor: "#FFFFFF"
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: "bottom" }
+                }
+            }
+        });
+
+        // 2. Workstation Usage Bar Chart
+        const usageCtx = document.getElementById("workstationUsageChart").getContext("2d");
+        if (usageChartInstance) usageChartInstance.destroy();
+
+        const pcLabels = Object.keys(data.workstation_usage);
+        const pcCounts = Object.values(data.workstation_usage);
+
+        usageChartInstance = new Chart(usageCtx, {
+            type: "bar",
+            data: {
+                labels: pcLabels,
+                datasets: [{
+                    label: "Times Allocated",
+                    data: pcCounts,
+                    backgroundColor: "#26483D",
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+
+        // 3. Actions Distribution Bar Chart
+        const actCtx = document.getElementById("actionsChart").getContext("2d");
+        if (actionsChartInstance) actionsChartInstance.destroy();
+
+        const actionLabels = Object.keys(data.action_breakdown);
+        const actionCounts = Object.values(data.action_breakdown);
+
+        actionsChartInstance = new Chart(actCtx, {
+            type: "bar",
+            data: {
+                labels: actionLabels.length ? actionLabels : ["Allocated", "Logout", "Reassigned"],
+                datasets: [{
+                    label: "Event Count",
+                    data: actionCounts.length ? actionCounts : [0, 0, 0],
+                    backgroundColor: ["#26965C", "#DC4545", "#D98C55"],
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error("Failed to load analytics:", err);
+    }
+}
+
+loadAnalytics();
+</script>
+{% endblock %}

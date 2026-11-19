@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block page_subtitle %}Workspace / Dashboard Overview{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <div class="dashboard-header">
+        <div>
+            <h1>Computer Lab Dashboard</h1>
+            <p>Real-time laboratory overview, workstation availability, and active student allocations.</p>
+        </div>
+        <span class="system-status">System Operational</span>
+    </div>
+
+    <!-- Statistics Grid (4 Key Metrics) -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p>Total Computers</p>
+            <h2 id="totalComputers">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Occupied Computers</p>
+            <h2 id="occupiedCount" style="color: #DC4545;">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Available Computers</p>
+            <h2 id="availableCount" style="color: #26965C;">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Students in Waiting Queue</p>
+            <h2 id="waitingCount" style="color: #D98C55;">0</h2>
+        </div>
+    </div>
+
+    <!-- Compact Semaphore Summary Banner -->
+    <div class="compact-semaphore-banner">
+        <div class="compact-sem-info">
+            <div>
+                <h3>Counting Semaphore Status</h3>
+                <p>
+                    <span class="sem-pill-green"><strong id="compactAvailablePermits">0</strong> Available Permits</span>
+                    &bull;
+                    <span class="sem-pill-red"><strong id="compactAcquiredPermits">0</strong> Acquired</span>
+                    &bull;
+                    <span style="color: var(--muted);">Capacity: <strong id="compactTotalCapacity">0</strong></span>
+                </p>
+            </div>
+        </div>
+        <a href="/semaphore-management" class="compact-sem-link">
+            Open Semaphore Management Board &rarr;
+        </a>
+    </div>
+
+    <!-- Workstation Overview Grid -->
+    <div class="dashboard-section">
+        <div class="section-heading">
+            <div>
+                <h2>Workstations Overview</h2>
+                <p>Live status of physical computer lab machines</p>
+            </div>
+            <button class="refresh-btn" onclick="loadDashboard()">Refresh</button>
+        </div>
+        <div id="workstationGrid" class="workstation-grid">
+            Loading workstations...
+        </div>
+    </div>
+
+    <!-- Grid Layout for Tables -->
+    <div class="dashboard-tables-grid">
+        <!-- Current Allocations -->
+        <div class="dashboard-section">
+            <h2>Current Active Allocations</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student ID</th>
+                        <th>Workstation</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="allocationTable">
+                    <tr>
+                        <td colspan="4">Loading allocations...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="dashboard-section">
+            <h2>Recent Allocation Activity</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student ID</th>
+                        <th>Workstation</th>
+                        <th>Event</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTable">
+                    <tr>
+                        <td colspan="4">Loading recent activity...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+async function releaseFromDashboard(studentId) {
+    try {
+        const response = await fetch("/api/logout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ student_id: studentId })
+        });
+        const result = await response.json();
+        loadDashboard();
+    } catch (err) {
+        console.error("Failed to release workstation: " + err.message);
+    }
+}
+
+async function loadDashboard() {
+    try {
+        const response = await fetch("/api/dashboard-data");
+        const data = await response.json();
+
+        // 1. Statistics Cards
+        document.getElementById("totalComputers").textContent = data.total_computers;
+        document.getElementById("occupiedCount").textContent = data.occupied_count;
+        document.getElementById("availableCount").textContent = data.available_count;
+        document.getElementById("waitingCount").textContent = data.waiting_count;
+
+        // 2. Compact Semaphore Summary
+        document.getElementById("compactTotalCapacity").textContent = data.total_capacity || data.total_computers;
+        document.getElementById("compactAvailablePermits").textContent = data.available_permits !== undefined ? data.available_permits : data.available_count;
+        document.getElementById("compactAcquiredPermits").textContent = data.acquired_permits !== undefined ? data.acquired_permits : data.occupied_count;
+
+        // 3. Workstation Detailed Grid
+        const grid = document.getElementById("workstationGrid");
+        grid.innerHTML = "";
+
+        const wsList = data.workstations || [];
+        wsList.forEach(pc => {
+            const occupied = pc.status.toLowerCase() === "occupied";
+            grid.innerHTML += `
+                <div class="workstation-card ${occupied ? 'occupied' : 'available'}">
+                    <h3>${pc.pc_id}</h3>
+                    <span class="workstation-status">${occupied ? 'Occupied' : 'Available'}</span>
+                    <p>${pc.student_id ? 'Student: ' + pc.student_id : 'Ready for allocation'}</p>
+                </div>
+            `;
+        });
+
+        // 4. Current Allocations Table
+        const allocTable = document.getElementById("allocationTable");
+        allocTable.innerHTML = "";
+        const entries = Object.entries(data.allocations || {});
+
+        if (entries.length === 0) {
+            allocTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--muted);">No active allocations. All workstations are free.</td></tr>';
+        } else {
+            entries.forEach(([student, pc]) => {
+                allocTable.innerHTML += `
+                    <tr>
+                        <td><strong>${student}</strong></td>
+                        <td><span class="pc-badge">${pc}</span></td>
+                        <td><span class="status-badge status-occupied">Occupied</span></td>
+                        <td>
+                            <button class="action-btn-small" onclick="releaseFromDashboard('${student}')">Release</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // 5. Recent Activity Table
+        const histTable = document.getElementById("historyTable");
+        histTable.innerHTML = "";
+
+        if (!data.history || data.history.length === 0) {
+            histTable.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--muted);">No recent activity recorded.</td></tr>';
+        } else {
+            data.history.forEach(item => {
+                let badgeClass = "badge-allocated";
+                if (item.action === "Logout") badgeClass = "badge-logout";
+                if (item.action === "Reassigned") badgeClass = "badge-reassigned";
+
+                histTable.innerHTML += `
+                    <tr>
+                        <td>${item.student_id}</td>
+                        <td><span class="pc-badge">${item.workstation}</span></td>
+                        <td><span class="history-badge ${badgeClass}">${item.action}</span></td>
+                        <td><small style="color: var(--muted);">${item.time}</small></td>
+                    </tr>
+                `;
+            });
+        }
+
+    } catch (error) {
+        console.error("Dashboard loading failed:", error);
+    }
+}
+
+// Initial load & automatic refresh every 3 seconds
+loadDashboard();
+setInterval(loadDashboard, 3000);
+</script>
+{% endblock %}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LabSpace – Computer Lab Allocation System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <div class="app-layout">
+
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="brand-icon">LS</span>
+                <span>LabSpace</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <!-- 1. Dashboard -->
+                <a href="/dashboard"
+                   class="nav-link {% if request.endpoint == 'dashboard.dashboard_page' %}active{% endif %}">
+                    Dashboard
+                </a>
+
+                <!-- 2. Workstations -->
+                <a href="/workstations"
+                   class="nav-link {% if request.endpoint == 'workstation.workstations_page' %}active{% endif %}">
+                    Workstations
+                </a>
+
+                <!-- 3. Students -->
+                <a href="/students"
+                   class="nav-link {% if request.endpoint == 'student.students_page' %}active{% endif %}">
+                    Students
+                </a>
+
+                <!-- 4. Waiting Queue -->
+                <a href="/waiting-queue"
+                   class="nav-link {% if request.endpoint == 'waiting_queue.waiting_queue_page' %}active{% endif %}">
+                    Waiting Queue
+                </a>
+
+                <!-- 5. Semaphore Management -->
+                <a href="/semaphore-management"
+                   class="nav-link {% if request.endpoint == 'semaphore.semaphore_page' %}active{% endif %}">
+                    Semaphore Management
+                </a>
+
+                <!-- 6. History -->
+                <a href="/history"
+                   class="nav-link {% if request.endpoint == 'history.history_page' %}active{% endif %}">
+                    History
+                </a>
+
+                <!-- 7. Analytics -->
+                <a href="/analytics"
+                   class="nav-link {% if request.endpoint == 'analytics.analytics_page' %}active{% endif %}">
+                    Analytics
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <span class="online-dot"></span>
+                Dynamic Semaphore Guarded
+            </div>
+        </aside>
+
+        <main class="main-content">
+
+            <header class="topbar">
+                <div>
+                    <h2>LabSpace – Computer Lab Allocation</h2>
+                    <p>{% block page_subtitle %}Operating Systems & Computer Networks Project{% endblock %}</p>
+                </div>
+
+                <div class="admin-profile">
+                    <span class="profile-avatar">A</span>
+                    <span>Lab Admin</span>
+                </div>
+            </header>
+
+            {% block content %}
+            {% endblock %}
+
+        </main>
+
+    </div>
+
+</body>
+</html>

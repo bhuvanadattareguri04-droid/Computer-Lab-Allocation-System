@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block page_subtitle %}Operating Systems / Semaphore Management{% endblock %}
+
+{% block content %}
+<div class="page-container">
+
+    <div class="page-header">
+        <div>
+            <h1>Semaphore Management</h1>
+            <p>Real-time telemetry and resource board for the Python Counting Semaphore (threading.Semaphore).</p>
+        </div>
+        <span class="system-status">Counting Semaphore Active</span>
+    </div>
+
+    <!-- Educational Concept Banner -->
+    <div class="concept-banner">
+        <div class="concept-badge">OS Semaphore Concept</div>
+        <span><strong>Counting Semaphore:</strong> Manages a pool of finite workstation permits. Each allocation decrements permits via <code>acquire()</code>. When a student logs out, <code>release()</code> increments available permits, or immediately dispatches to the FIFO queue head.</span>
+    </div>
+
+    <!-- Telemetry Statistics Grid -->
+    <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
+        <!-- 1. Total Semaphore Capacity -->
+        <div class="stat-card">
+            <p>Total Semaphore Capacity</p>
+            <h2 id="semTotalCapacity">0</h2>
+            <small style="color: var(--muted); font-size: 11px;">Configured Workstations</small>
+        </div>
+
+        <!-- 2. Available Permits -->
+        <div class="stat-card" style="border-top: 4px solid #26965C;">
+            <p>Available Permits</p>
+            <h2 id="semAvailablePermits" style="color: #26965C;">0</h2>
+            <small style="color: var(--muted); font-size: 11px;">acquire() ready</small>
+        </div>
+
+        <!-- 3. Acquired Permits -->
+        <div class="stat-card" style="border-top: 4px solid #DC4545;">
+            <p>Acquired Permits</p>
+            <h2 id="semAcquiredPermits" style="color: #DC4545;">0</h2>
+            <small style="color: var(--muted); font-size: 11px;">Held by active students</small>
+        </div>
+
+        <!-- 4. Active Allocations -->
+        <div class="stat-card">
+            <p>Active Allocations</p>
+            <h2 id="semActiveAllocations" style="color: var(--primary);">0</h2>
+            <small style="color: var(--muted); font-size: 11px;">Occupied PCs</small>
+        </div>
+
+        <!-- 5. Waiting Students -->
+        <div class="stat-card" style="border-top: 4px solid #D98C55;">
+            <p>Waiting Students</p>
+            <h2 id="semWaitingStudents" style="color: #D98C55;">0</h2>
+            <small style="color: var(--muted); font-size: 11px;">FIFO Queue Depth</small>
+        </div>
+    </div>
+
+    <!-- Visual Semaphore Resource Board -->
+    <div class="dashboard-section">
+        <div class="section-heading">
+            <div>
+                <h2>Visual Semaphore Resource Board</h2>
+                <p>Live permit allocation state for each physical workstation (GREEN = Available Permit, RED = Acquired Permit)</p>
+            </div>
+            <button class="refresh-btn" onclick="loadSemaphoreBoard()">Refresh</button>
+        </div>
+
+        <!-- Visual Permit Grid -->
+        <div id="semaphorePermitGrid" class="semaphore-permit-grid">
+            Loading semaphore resources...
+        </div>
+    </div>
+
+    <!-- Semaphore Status Legend -->
+    <div class="status-legend" style="margin-top: 20px;">
+        <span><i class="legend-dot available-dot"></i> <strong>GREEN:</strong> Available Permit (Resource is free for allocation)</span>
+        <span><i class="legend-dot occupied-dot"></i> <strong>RED:</strong> Acquired Permit (Workstation occupied by student)</span>
+        <span><i class="legend-dot waiting-dot"></i> <strong>ORANGE:</strong> Waiting in FIFO queue (All permits acquired)</span>
+    </div>
+
+</div>
+
+<script>
+async function loadSemaphoreBoard() {
+    try {
+        const response = await fetch("/api/semaphore-data");
+        const data = await response.json();
+
+        // Update numeric telemetry cards
+        document.getElementById("semTotalCapacity").textContent = data.total_capacity;
+        document.getElementById("semAvailablePermits").textContent = data.available_permits;
+        document.getElementById("semAcquiredPermits").textContent = data.acquired_permits;
+        document.getElementById("semActiveAllocations").textContent = data.active_allocations;
+        document.getElementById("semWaitingStudents").textContent = data.waiting_students;
+
+        // Populate visual permit rack
+        const permitGrid = document.getElementById("semaphorePermitGrid");
+        permitGrid.innerHTML = "";
+
+        const workstations = data.workstations || [];
+        workstations.forEach(ws => {
+            const isOccupied = ws.status.toLowerCase() === "occupied";
+            const permitCard = document.createElement("div");
+            permitCard.className = `permit-card ${isOccupied ? 'permit-acquired' : 'permit-available'}`;
+
+            permitCard.innerHTML = `
+                <div class="permit-header">
+                    <span class="permit-dot ${isOccupied ? 'dot-red' : 'dot-green'}"></span>
+                    <h3>${ws.pc_id}</h3>
+                </div>
+                <div class="permit-badge ${isOccupied ? 'badge-red' : 'badge-green'}">
+                    ${isOccupied ? 'ACQUIRED PERMIT' : 'AVAILABLE PERMIT'}
+                </div>
+                <div class="permit-details">
+                    <p class="permit-status">${isOccupied ? 'Workstation Occupied' : 'Workstation Ready'}</p>
+                    <p class="permit-student">${ws.student_id ? '<strong>Student:</strong> ' + ws.student_id : '<em>No active user</em>'}</p>
+                </div>
+            `;
+            permitGrid.appendChild(permitCard);
+        });
+
+    } catch (err) {
+        console.error("Failed to load semaphore data:", err);
+    }
+}
+
+// Initial load & automatic refresh every 3 seconds
+loadSemaphoreBoard();
+setInterval(loadSemaphoreBoard, 3000);
+</script>
+{% endblock %}

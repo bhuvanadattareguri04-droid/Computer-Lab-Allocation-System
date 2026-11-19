@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+
+{% block page_subtitle %}Admin / Student Management{% endblock %}
+
+{% block content %}
+<div class="page-container">
+
+    <div class="page-header">
+        <div>
+            <h1>Student Management</h1>
+            <p>Register students with automatic workstation allocation and manage records.</p>
+        </div>
+        <span class="system-status">Automatic Allocation</span>
+    </div>
+
+    <!-- Alert / Feedback Area -->
+    <div id="studentAlert" class="alert-container" style="display: none;"></div>
+
+    <!-- =====================================================================
+         TOP PANELS: Individual Registration | Bulk Registration | Status Cards
+         Three equal-width panels side-by-side.
+         ===================================================================== -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+
+        <!-- PANEL 1: Individual Student Registration -->
+        <div class="dashboard-section" style="margin: 0;">
+            <h2 style="margin-bottom: 6px;">Register Student</h2>
+            <p class="section-desc" style="margin-bottom: 16px;">
+                Enter a Student ID. The student is saved to the database and
+                immediately allocated an available workstation, or placed in
+                the FIFO waiting queue if all computers are occupied.
+            </p>
+
+            <form id="addStudentForm" onsubmit="handleRegisterStudent(event)">
+                <div class="form-group">
+                    <label for="newStudentId">Student ID *</label>
+                    <input type="text" id="newStudentId" placeholder="e.g. STU101" required autocomplete="off">
+                </div>
+                <button type="submit" class="submit-btn" id="registerBtn">
+                    Register and Allocate
+                </button>
+            </form>
+        </div>
+
+        <!-- PANEL 2: Bulk Student Registration -->
+        <div class="dashboard-section" style="margin: 0;">
+            <h2 style="margin-bottom: 6px;">Bulk Registration</h2>
+            <p class="section-desc" style="margin-bottom: 16px;">
+                Register multiple students at once. Sequential Student IDs are
+                generated automatically, continuing from the highest existing ID.
+                Each student immediately enters the allocation process.
+            </p>
+
+            <div class="form-group">
+                <label for="bulkCountInput">Number of students to add</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input
+                        type="number"
+                        id="bulkCountInput"
+                        min="1"
+                        step="1"
+                        value="5"
+                        class="filter-input"
+                        style="width: 90px; padding: 10px 12px; font-size: 15px;"
+                        onkeydown="if(event.key==='Enter') handleBulkRegister();"
+                    >
+                    <button class="submit-btn" style="width: auto; padding: 11px 22px;" id="bulkRegisterBtn" onclick="handleBulkRegister()">
+                        + Add Students
+                    </button>
+                </div>
+            </div>
+            <small style="color: var(--muted);">
+                IDs are generated sequentially from the highest existing Student ID.
+                Students are processed in order — FIFO queue is preserved.
+            </small>
+        </div>
+
+        <!-- PANEL 3: Status Overview -->
+        <div class="dashboard-section" style="margin: 0;">
+            <h2 style="margin-bottom: 6px;">Status Overview</h2>
+            <p class="section-desc" style="margin-bottom: 16px;">Real-time breakdown of registered students.</p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="stat-card" style="padding: 14px;">
+                    <p style="font-size: 12px;">Total Registered</p>
+                    <h2 id="totalStudentsCount" style="font-size: 26px;">0</h2>
+                </div>
+                <div class="stat-card" style="padding: 14px; border-top: 3px solid #DC4545;">
+                    <p style="font-size: 12px;">Currently Using PC</p>
+                    <h2 id="activeStudentsCount" style="font-size: 26px; color: #DC4545;">0</h2>
+                </div>
+                <div class="stat-card" style="padding: 14px; border-top: 3px solid #D98C55;">
+                    <p style="font-size: 12px;">Waiting in Queue</p>
+                    <h2 id="waitingStudentsCount" style="font-size: 26px; color: #D98C55;">0</h2>
+                </div>
+                <div class="stat-card" style="padding: 14px; border-top: 3px solid #26965C;">
+                    <p style="font-size: 12px;">Off-Lab / Logged Out</p>
+                    <h2 id="idleStudentsCount" style="font-size: 26px; color: #26965C;">0</h2>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- =====================================================================
+         REGISTERED STUDENTS TABLE
+         ===================================================================== -->
+    <div class="dashboard-section">
+        <div class="section-heading">
+            <div>
+                <h2>Registered Students Directory</h2>
+                <p>All student records with real-time allocation status</p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="studentSearch" placeholder="Search Student ID…" oninput="filterStudents()" class="filter-input">
+                <button class="logout-btn" style="width: auto; padding: 9px 16px; background: #8C4040;" onclick="handleRemoveAll()">
+                    Remove All Eligible
+                </button>
+                <button class="refresh-btn" onclick="loadStudents()">Refresh</button>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Student ID</th>
+                    <th>Current Status</th>
+                    <th>Registration Date</th>
+                    <th style="width: 120px;">Action</th>
+                </tr>
+            </thead>
+            <tbody id="studentTableBody">
+                <tr>
+                    <td colspan="4" style="text-align: center; color: var(--muted);">Loading students…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+let allStudents = [];
+
+/* -------------------------------------------------------------------------
+   Utility: in-page alert banner (no browser popups)
+   ------------------------------------------------------------------------- */
+function showStudentAlert(message, type) {
+    const box = document.getElementById("studentAlert");
+    box.className = `alert-container alert-${type}`;
+    box.innerHTML = `
+        <div class="alert-content">
+            <span class="alert-icon">${type === 'success' ? '✓' : '⚠'}</span>
+            <span>${message}</span>
+        </div>
+    `;
+    box.style.display = "block";
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* -------------------------------------------------------------------------
+   PANEL 1: Individual student registration
+   POST /api/students { student_id }
+   ------------------------------------------------------------------------- */
+async function handleRegisterStudent(e) {
+    e.preventDefault();
+    const studentId = document.getElementById("newStudentId").value.trim();
+    if (!studentId) return;
+
+    const btn = document.getElementById("registerBtn");
+    btn.disabled = true;
+    btn.textContent = "Processing…";
+
+    try {
+        const res = await fetch("/api/students", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ student_id: studentId })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            showStudentAlert(data.message, "success");
+            document.getElementById("newStudentId").value = "";
+            loadStudents();
+        } else {
+            showStudentAlert(data.message, "error");
+        }
+    } catch (err) {
+        showStudentAlert("Server error: " + err.message, "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Register and Allocate";
+    }
+}
+
+/* -------------------------------------------------------------------------
+   PANEL 2: Bulk student registration
+   POST /api/students/bulk { count }
+   ------------------------------------------------------------------------- */
+async function handleBulkRegister() {
+    const raw = document.getElementById("bulkCountInput").value.trim();
+
+    if (!raw) {
+        showStudentAlert("Please enter the number of students to add.", "error");
+        return;
+    }
+    if (raw.includes(".") || raw.includes(",")) {
+        showStudentAlert("Invalid quantity. Please enter a positive whole number greater than 0.", "error");
+        return;
+    }
+
+    const count = Number(raw);
+    if (!Number.isInteger(count) || count <= 0) {
+        showStudentAlert("Invalid quantity. Please enter a positive whole number greater than 0.", "error");
+        return;
+    }
+
+    const btn = document.getElementById("bulkRegisterBtn");
+    btn.disabled = true;
+    btn.textContent = "Registering…";
+
+    try {
+        const res = await fetch("/api/students/bulk", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            // Build a detailed summary message
+            let detail = data.message;
+            if (data.results && data.results.length > 0) {
+                const lines = data.results.map(r => {
+                    if (r.allocation_status === "allocated")
+                        return `${r.student_id} → ${r.workstation}`;
+                    if (r.allocation_status === "waiting")
+                        return `${r.student_id} → Waiting (Queue #${r.queue_position})`;
+                    return `${r.student_id} → ${r.allocation_status}`;
+                });
+                detail += "<br><small style='color:var(--muted);'>" + lines.join(" &nbsp;|&nbsp; ") + "</small>";
+            }
+            showStudentAlert(detail, "success");
+            loadStudents();
+        } else {
+            showStudentAlert(data.message, "error");
+        }
+    } catch (err) {
+        showStudentAlert("Server error: " + err.message, "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "+ Add Students";
+    }
+}
+
+/* -------------------------------------------------------------------------
+   Individual student removal (no browser popups)
+   ------------------------------------------------------------------------- */
+async function handleRemoveStudent(studentId) {
+    try {
+        const res = await fetch(`/api/students/${studentId}`, { method: "DELETE" });
+        const data = await res.json();
+        showStudentAlert(data.message, res.ok ? "success" : "error");
+        if (res.ok) loadStudents();
+    } catch (err) {
+        showStudentAlert("Error removing student: " + err.message, "error");
+    }
+}
+
+/* -------------------------------------------------------------------------
+   Remove all eligible students (no browser popups)
+   ------------------------------------------------------------------------- */
+async function handleRemoveAll() {
+    try {
+        const res = await fetch("/api/students/remove-all", { method: "POST" });
+        const data = await res.json();
+        showStudentAlert(data.message, res.ok ? "success" : "error");
+        if (res.ok) loadStudents();
+    } catch (err) {
+        showStudentAlert("Error removing students: " + err.message, "error");
+    }
+}
+
+/* -------------------------------------------------------------------------
+   Load student list from API and refresh table + status cards
+   ------------------------------------------------------------------------- */
+async function loadStudents() {
+    try {
+        const res = await fetch("/api/students");
+        const data = await res.json();
+
+        allStudents = data.students || [];
+        document.getElementById("totalStudentsCount").textContent  = data.total_students;
+        document.getElementById("activeStudentsCount").textContent  = allStudents.filter(s => s.status_type === "active").length;
+        document.getElementById("waitingStudentsCount").textContent = allStudents.filter(s => s.status_type === "waiting").length;
+        document.getElementById("idleStudentsCount").textContent    = allStudents.filter(s => s.status_type === "idle").length;
+
+        renderStudentsTable(allStudents);
+    } catch (err) {
+        console.error("Failed to load students:", err);
+    }
+}
+
+/* -------------------------------------------------------------------------
+   Filter table by search input
+   ------------------------------------------------------------------------- */
+function filterStudents() {
+    const q = document.getElementById("studentSearch").value.toLowerCase().trim();
+    renderStudentsTable(q ? allStudents.filter(s => s.student_id.toLowerCase().includes(q)) : allStudents);
+}
+
+/* -------------------------------------------------------------------------
+   Render the student directory table
+   ------------------------------------------------------------------------- */
+function renderStudentsTable(students) {
+    const tbody = document.getElementById("studentTableBody");
+    tbody.innerHTML = "";
+
+    if (students.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:25px;color:var(--muted);">No students registered yet.</td></tr>';
+        return;
+    }
+
+    students.forEach(s => {
+        let badgeClass = "badge-allocated";
+        if (s.status_type === "active")   badgeClass = "status-occupied";
+        if (s.status_type === "waiting")  badgeClass = "status-waiting";
+        if (s.status_type === "idle")     badgeClass = "status-available";
+
+        tbody.innerHTML += `
+            <tr>
+                <td><strong>${s.student_id}</strong></td>
+                <td><span class="status-badge ${badgeClass}">${s.current_status}</span></td>
+                <td><small style="color:var(--muted);">${s.created_at || 'Recorded'}</small></td>
+                <td>
+                    <button class="action-btn-small" style="background:#6F7D75;"
+                        onclick="handleRemoveStudent('${s.student_id}')">Remove</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+// Initial load
+loadStudents();
+</script>
+{% endblock %}

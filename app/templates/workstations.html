@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block page_subtitle %}Workspace / Workstation Management{% endblock %}
+
+{% block content %}
+<div class="page-container">
+
+    <div class="page-header">
+        <div>
+            <h1>Workstation Management</h1>
+            <p>Monitor workstation availability, add new computers, and manage lab capacity dynamically.</p>
+        </div>
+        <span class="system-status">Dynamic Semaphore Engine</span>
+    </div>
+
+    <!-- Alert / Feedback Area -->
+    <div id="wsAlert" class="alert-container" style="display: none;"></div>
+
+    <!-- =====================================================================
+         SECTION A: WORKSTATION OVERVIEW
+         Three summary cards: Total, Occupied, Available
+         All values calculated dynamically from SQLite workstation records.
+         ===================================================================== -->
+    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 28px;">
+        <div class="stat-card">
+            <p>Total Computers</p>
+            <h2 id="totalPCs">0</h2>
+        </div>
+        <div class="stat-card" style="border-top: 4px solid #DC4545;">
+            <p>Occupied Computers</p>
+            <h2 id="occupiedPCs" style="color: #DC4545;">0</h2>
+        </div>
+        <div class="stat-card" style="border-top: 4px solid #26965C;">
+            <p>Available Computers</p>
+            <h2 id="availablePCs" style="color: #26965C;">0</h2>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         SECTION B: ADD WORKSTATIONS
+         Accepts a positive whole number; generates sequential IDs; syncs
+         semaphore permits; auto-allocates to waiting FIFO students.
+         ===================================================================== -->
+    <div class="dashboard-section" style="margin-bottom: 20px;">
+        <div class="section-heading" style="margin-bottom: 18px;">
+            <div>
+                <h2>Add Workstations</h2>
+                <p>Add multiple computers in one operation. Sequential IDs are generated automatically (e.g. PC-06, PC-07…). Newly added computers are immediately assigned to waiting students in FIFO order.</p>
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <label for="addCountInput" style="font-weight: 600; color: var(--text); white-space: nowrap;">
+                Number of computers to add:
+            </label>
+            <input
+                type="number"
+                id="addCountInput"
+                min="1"
+                step="1"
+                value="5"
+                class="filter-input"
+                style="width: 90px; padding: 10px 12px; font-size: 15px;"
+                onkeydown="if(event.key==='Enter') handleBulkAddWorkstations();"
+            >
+            <button class="submit-btn" style="width: auto; padding: 11px 26px;" onclick="handleBulkAddWorkstations()">
+                + Add Workstations
+            </button>
+        </div>
+        <small style="color: var(--muted); display: block; margin-top: 10px;">
+            Workstation IDs are generated sequentially. The semaphore permit count is updated automatically.
+            If students are in the FIFO waiting queue, newly added computers are assigned to them immediately.
+        </small>
+    </div>
+
+    <!-- =====================================================================
+         SECTION C: REMOVE WORKSTATION
+         Dropdown shows only Available workstations. Occupied ones are blocked.
+         ===================================================================== -->
+    <div class="dashboard-section" style="margin-bottom: 20px;">
+        <div class="section-heading" style="margin-bottom: 18px;">
+            <div>
+                <h2>Remove Workstation</h2>
+                <p>Only available (unoccupied) workstations can be removed. Release any active student session before removing a workstation.</p>
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <label for="removePcSelect" style="font-weight: 600; color: var(--text); white-space: nowrap;">
+                Select available workstation:
+            </label>
+            <select id="removePcSelect" class="filter-input" style="min-width: 190px; padding: 10px 12px; font-size: 15px;">
+                <option value="">-- Select Available PC --</option>
+            </select>
+            <button class="logout-btn" style="width: auto; padding: 11px 22px;" onclick="handleRemoveWorkstation()">
+                Remove Workstation
+            </button>
+        </div>
+        <small style="color: var(--muted); display: block; margin-top: 10px;">
+            Removing a workstation releases its semaphore permit and deletes the record from SQLite.
+            Occupied workstations cannot be removed until the student logs out.
+        </small>
+    </div>
+
+    <!-- =====================================================================
+         SECTION D: RELEASE WORKSTATION / LOGOUT
+         Release an active workstation session. If students are waiting,
+         the freed workstation is immediately reassigned in FIFO order.
+         ===================================================================== -->
+    <div class="dashboard-section" style="margin-bottom: 28px;">
+        <div class="section-heading" style="margin-bottom: 18px;">
+            <div>
+                <h2>Release Workstation / Logout</h2>
+                <p>Release an occupied workstation session. When released, the workstation is automatically reassigned to the first student in the FIFO waiting queue.</p>
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <label for="releaseStudentSelect" style="font-weight: 600; color: var(--text); white-space: nowrap;">
+                Select active workstation:
+            </label>
+            <select id="releaseStudentSelect" class="filter-input" style="min-width: 240px; padding: 10px 12px; font-size: 15px;">
+                <option value="">-- Select Occupied PC --</option>
+            </select>
+            <button class="logout-btn" style="width: auto; padding: 11px 22px;" onclick="handleReleaseWorkstationFromSelect()">
+                Release Workstation
+            </button>
+        </div>
+        <small style="color: var(--muted); display: block; margin-top: 10px;">
+            Workstation sessions can also be released directly by clicking "Log Out / Release" on any occupied card below.
+        </small>
+    </div>
+
+    <!-- =====================================================================
+         WORKSTATION GRID
+         Live card view of every physical workstation with its current status.
+         ===================================================================== -->
+    <div class="dashboard-section">
+        <div class="section-heading">
+            <div>
+                <h2>Physical Workstations</h2>
+                <p>Live status synchronized with the Python Counting Semaphore permits</p>
+            </div>
+            <button class="refresh-btn" onclick="loadWorkstations()">Refresh</button>
+        </div>
+
+        <div id="workstationGrid" class="workstation-grid">
+            Loading workstations…
+        </div>
+    </div>
+
+    <!-- Status Legend -->
+    <div class="status-legend">
+        <span><i class="legend-dot available-dot"></i> Available — semaphore permit ready for allocation</span>
+        <span><i class="legend-dot occupied-dot"></i> Occupied — permit acquired by active student</span>
+    </div>
+
+</div>
+
+<script>
+/* -----------------------------------------------------------------------
+   Utility: show an in-page alert banner (no browser popups)
+   ----------------------------------------------------------------------- */
+function showWsAlert(message, type) {
+    const box = document.getElementById("wsAlert");
+    box.className = `alert-container alert-${type}`;
+    box.innerHTML = `
+        <div class="alert-content">
+            <span class="alert-icon" style="font-weight:600;">${type === 'success' ? 'Success:' : 'Notice:'}</span>
+            <span>${message}</span>
+        </div>
+    `;
+    box.style.display = "block";
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* -----------------------------------------------------------------------
+   SECTION B handler: validate input, POST /api/workstations/add {count}
+   ----------------------------------------------------------------------- */
+async function handleBulkAddWorkstations() {
+    const raw = document.getElementById("addCountInput").value.trim();
+    if (!raw) {
+        showWsAlert("Please enter the number of workstations to add.", "error");
+        return;
+    }
+
+    // Reject decimals and non-integers
+    if (raw.includes(".") || raw.includes(",")) {
+        showWsAlert("Invalid quantity. Please enter a positive whole number greater than 0.", "error");
+        return;
+    }
+
+    const count = Number(raw);
+    if (!Number.isInteger(count) || count <= 0) {
+        showWsAlert("Invalid quantity. Please enter a positive whole number greater than 0.", "error");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/workstations/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count })
+        });
+        const data = await res.json();
+        showWsAlert(data.message, res.ok ? "success" : "error");
+        if (res.ok) loadWorkstations();
+    } catch (err) {
+        showWsAlert("Failed to add workstations: " + err.message, "error");
+    }
+}
+
+/* -----------------------------------------------------------------------
+   SECTION C handler: POST /api/workstations/remove { pc_id }
+   Also called from individual card "Remove" button with specific pc_id.
+   ----------------------------------------------------------------------- */
+async function handleRemoveWorkstation(specificPcId) {
+    const pcId = specificPcId || document.getElementById("removePcSelect").value;
+    if (!pcId) {
+        showWsAlert("Please select an available workstation to remove.", "error");
+        return;
+    }
+    try {
+        const res = await fetch("/api/workstations/remove", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pc_id: pcId })
+        });
+        const data = await res.json();
+        showWsAlert(data.message, res.ok ? "success" : "error");
+        if (res.ok) loadWorkstations();
+    } catch (err) {
+        showWsAlert("Failed to remove workstation: " + err.message, "error");
+    }
+}
+
+/* -----------------------------------------------------------------------
+   SECTION D handler: Release Workstation from dropdown selection
+   ----------------------------------------------------------------------- */
+async function handleReleaseWorkstationFromSelect() {
+    const studentId = document.getElementById("releaseStudentSelect").value;
+    if (!studentId) {
+        showWsAlert("Please select an active workstation / student to release.", "error");
+        return;
+    }
+    await releaseWorkstation(studentId);
+}
+
+/* -----------------------------------------------------------------------
+   Release workstation (logout student) from a card button or dropdown
+   ----------------------------------------------------------------------- */
+async function releaseWorkstation(studentId) {
+    try {
+        const res = await fetch("/api/logout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ student_id: studentId })
+        });
+        const data = await res.json();
+        showWsAlert(data.message, res.ok ? "success" : "error");
+        loadWorkstations();
+    } catch (err) {
+        showWsAlert("Error releasing workstation: " + err.message, "error");
+    }
+}
+
+/* -----------------------------------------------------------------------
+   Load & render workstations — updates overview cards + grid + dropdowns
+   ----------------------------------------------------------------------- */
+async function loadWorkstations() {
+    const grid = document.getElementById("workstationGrid");
+    const removeSelect = document.getElementById("removePcSelect");
+    const releaseSelect = document.getElementById("releaseStudentSelect");
+
+    try {
+        const res = await fetch("/api/workstations");
+        if (!res.ok) throw new Error("Unable to fetch workstation data");
+
+        const data = await res.json();
+        const computers = data.workstations || [];
+
+        const total    = computers.length;
+        const available = computers.filter(pc => pc.status.toLowerCase() === "available").length;
+        const occupied  = total - available;
+
+        // Update Section A overview cards
+        document.getElementById("totalPCs").textContent    = total;
+        document.getElementById("availablePCs").textContent = available;
+        document.getElementById("occupiedPCs").textContent  = occupied;
+
+        // Update Section C dropdown (available PCs only)
+        removeSelect.innerHTML = '<option value="">-- Select Available PC --</option>';
+        computers
+            .filter(pc => pc.status.toLowerCase() === "available")
+            .forEach(pc => {
+                const opt = document.createElement("option");
+                opt.value = pc.pc_id;
+                opt.textContent = `${pc.pc_id} (Available)`;
+                removeSelect.appendChild(opt);
+            });
+
+        // Update Section D dropdown (occupied PCs only)
+        releaseSelect.innerHTML = '<option value="">-- Select Occupied PC --</option>';
+        const occupiedPCs = computers.filter(pc => pc.status.toLowerCase() === "occupied");
+        if (occupiedPCs.length === 0) {
+            const opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "-- No Active Allocations --";
+            opt.disabled = true;
+            releaseSelect.appendChild(opt);
+        } else {
+            occupiedPCs.forEach(pc => {
+                const opt = document.createElement("option");
+                opt.value = pc.student_id;
+                opt.textContent = `${pc.pc_id} (Student: ${pc.student_id})`;
+                releaseSelect.appendChild(opt);
+            });
+        }
+
+        // Render workstation cards
+        grid.innerHTML = "";
+
+        if (computers.length === 0) {
+            grid.innerHTML = `<p style="color:var(--muted);text-align:center;grid-column:1/-1;padding:30px;">
+                No workstations configured yet. Use the <strong>Add Workstations</strong> section above to get started.
+            </p>`;
+            return;
+        }
+
+        computers.forEach(pc => {
+            const isOccupied = pc.status.toLowerCase() === "occupied";
+            const card = document.createElement("div");
+            card.className = `workstation-card ${isOccupied ? "occupied" : "available"}`;
+
+            const topRight = isOccupied
+                ? `<button class="remove-card-btn disabled" disabled title="Cannot remove while occupied">Occupied</button>`
+                : `<button class="remove-card-btn" onclick="handleRemoveWorkstation('${pc.pc_id}')" title="Remove this workstation">Remove</button>`;
+
+            const action = isOccupied && pc.student_id
+                ? `<button class="release-btn" onclick="releaseWorkstation('${pc.student_id}')">Log Out / Release</button>`
+                : `<span style="display:inline-block; padding: 7px 14px; background: #EBF3EF; color: #26483D; border-radius: 8px; font-size: 13px; font-weight: 500;">Ready for Allocation</span>`;
+
+            card.innerHTML = `
+                <div class="card-top-row">
+                    <div class="pc-icon">PC</div>
+                    ${topRight}
+                </div>
+                <h3>${pc.pc_id}</h3>
+                <span class="workstation-status">${isOccupied ? "Occupied" : "Available"}</span>
+                <p class="student-info">${pc.student_id
+                    ? `<strong>Student:</strong> ${pc.student_id}`
+                    : `<em>Ready for allocation</em>`}</p>
+                <div class="card-action">${action}</div>
+            `;
+            grid.appendChild(card);
+        });
+
+    } catch (err) {
+        console.error(err);
+        grid.innerHTML = `<p style="color:red;text-align:center;">Unable to load workstations. Check backend connection.</p>`;
+    }
+}
+
+// Initial load & auto-refresh every 3 s
+loadWorkstations();
+setInterval(loadWorkstations, 3000);
+</script>
+{% endblock %}

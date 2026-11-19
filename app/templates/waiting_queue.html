@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block page_subtitle %}Workspace / FIFO Waiting Queue{% endblock %}
+
+{% block content %}
+<div class="page-container">
+
+    <div class="page-header">
+        <div>
+            <h1>FIFO Waiting Queue</h1>
+            <p>First-In, First-Out scheduling queue for students awaiting an available workstation.</p>
+        </div>
+        <span class="system-status">FIFO Scheduling</span>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p>Students in Queue</p>
+            <h2 id="queueCount" style="color: #D98C55;">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Next Student in Line</p>
+            <h2 id="nextStudent" style="font-size: 22px; color: var(--primary);">None</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Current Lab Capacity</p>
+            <h2 id="labCapacity">0 / 0 Occupied</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Queue Policy</p>
+            <h2 style="font-size: 20px; color: var(--accent);">FIFO</h2>
+        </div>
+    </div>
+
+    <!-- Waiting Queue Table -->
+    <div class="dashboard-section">
+        <div class="section-heading">
+            <div>
+                <h2>Live Waiting Queue</h2>
+                <p>Ordered strictly by arrival order (First-In, First-Out)</p>
+            </div>
+            <button class="refresh-btn" onclick="loadWaitingQueue()">Refresh</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 140px;">Position</th>
+                    <th>Student ID</th>
+                    <th>Request Time</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="queueTableBody">
+                <tr>
+                    <td colspan="4" style="text-align: center; color: var(--muted);">Loading waiting queue...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+async function loadWaitingQueue() {
+    try {
+        const response = await fetch("/api/waiting-queue");
+        const data = await response.json();
+
+        document.getElementById("queueCount").textContent = data.waiting_count;
+
+        const nextEl = document.getElementById("nextStudent");
+        if (data.queue && data.queue.length > 0) {
+            nextEl.textContent = data.queue[0].student_id;
+        } else {
+            nextEl.textContent = "None";
+        }
+
+        const totalCap = data.total_capacity !== undefined ? data.total_capacity : 0;
+        const occCount = data.occupied_count !== undefined ? data.occupied_count : 0;
+        document.getElementById("labCapacity").textContent = `${occCount} / ${totalCap} Occupied`;
+
+        const tableBody = document.getElementById("queueTableBody");
+        tableBody.innerHTML = "";
+
+        if (!data.queue || data.queue.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 35px; color: var(--muted);">
+                        <strong>Waiting Queue is empty</strong><br>
+                        No students are currently waiting for a workstation.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        data.queue.forEach(item => {
+            const isHead = item.position === 1;
+            tableBody.innerHTML += `
+                <tr class="${isHead ? 'queue-head-row' : ''}">
+                    <td>
+                        <span class="queue-position-badge ${isHead ? 'head-badge' : ''}">
+                            #${item.position}${isHead ? ' (Next)' : ''}
+                        </span>
+                    </td>
+                    <td><strong>${item.student_id}</strong></td>
+                    <td><small style="color: var(--muted);">${item.request_time}</small></td>
+                    <td>
+                        <span class="status-badge status-waiting">
+                            ${isHead ? 'Next for Allocation' : 'Waiting'}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        });
+
+    } catch (err) {
+        console.error("Failed to load queue:", err);
+    }
+}
+
+loadWaitingQueue();
+setInterval(loadWaitingQueue, 4000);
+</script>
+{% endblock %}

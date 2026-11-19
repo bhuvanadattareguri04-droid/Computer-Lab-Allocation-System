@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block page_subtitle %}Workspace / Allocation History{% endblock %}
+
+{% block content %}
+<div class="page-container">
+
+    <div class="page-header">
+        <div>
+            <h1>Allocation Audit History</h1>
+            <p>Comprehensive audit log of all computer requests, allocations, logouts, and queue reassignments.</p>
+        </div>
+        <span class="system-status">Audit Log Persistent</span>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p>Total Logged Events</p>
+            <h2 id="totalEvents">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Initial Allocations</p>
+            <h2 id="totalAllocated" style="color: #26965C;">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>Session Logouts</p>
+            <h2 id="totalLogouts" style="color: #DC4545;">0</h2>
+        </div>
+
+        <div class="stat-card">
+            <p>FIFO Reassignments</p>
+            <h2 id="totalReassigned" style="color: var(--accent);">0</h2>
+        </div>
+    </div>
+
+    <!-- History Table Section -->
+    <div class="dashboard-section">
+        <div class="section-heading">
+            <div>
+                <h2>Event Log</h2>
+                <p>Permanent SQLite database records</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="historySearch" placeholder="Filter student or PC..." oninput="filterHistory()" class="filter-input">
+                <button class="refresh-btn" onclick="loadHistory()">Refresh</button>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 80px;">Log ID</th>
+                    <th>Student ID</th>
+                    <th>Student Name</th>
+                    <th>Workstation</th>
+                    <th>Action Taken</th>
+                    <th>Date & Time</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody">
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--muted);">Loading history records...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+let allHistoryData = [];
+
+async function loadHistory() {
+    try {
+        const response = await fetch("/api/history");
+        const data = await response.json();
+
+        allHistoryData = data.history;
+        document.getElementById("totalEvents").textContent = data.total_records;
+
+        const allocatedCount = allHistoryData.filter(h => h.action === "Allocated").length;
+        const logoutCount = allHistoryData.filter(h => h.action === "Logout").length;
+        const reassignedCount = allHistoryData.filter(h => h.action === "Reassigned").length;
+
+        document.getElementById("totalAllocated").textContent = allocatedCount;
+        document.getElementById("totalLogouts").textContent = logoutCount;
+        document.getElementById("totalReassigned").textContent = reassignedCount;
+
+        renderHistory(allHistoryData);
+    } catch (err) {
+        console.error("Failed to load history:", err);
+    }
+}
+
+function filterHistory() {
+    const q = document.getElementById("historySearch").value.toLowerCase().trim();
+    if (!q) {
+        renderHistory(allHistoryData);
+        return;
+    }
+    const filtered = allHistoryData.filter(item =>
+        item.student_id.toLowerCase().includes(q) ||
+        (item.student_name && item.student_name.toLowerCase().includes(q)) ||
+        item.workstation.toLowerCase().includes(q) ||
+        item.action.toLowerCase().includes(q)
+    );
+    renderHistory(filtered);
+}
+
+function renderHistory(records) {
+    const tbody = document.getElementById("historyTableBody");
+    tbody.innerHTML = "";
+
+    if (records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 25px; color: var(--muted);">No matching history records found.</td></tr>';
+        return;
+    }
+
+    records.forEach(item => {
+        let badgeClass = "badge-allocated";
+        if (item.action === "Logout") badgeClass = "badge-logout";
+        if (item.action === "Reassigned") badgeClass = "badge-reassigned";
+
+        tbody.innerHTML += `
+            <tr>
+                <td><small style="color: var(--muted);">#${item.history_id}</small></td>
+                <td><strong>${item.student_id}</strong></td>
+                <td>${item.student_name || item.student_id}</td>
+                <td><span class="pc-badge">${item.workstation}</span></td>
+                <td><span class="history-badge ${badgeClass}">${item.action}</span></td>
+                <td><small style="color: var(--muted);">${item.event_time}</small></td>
+            </tr>
+        `;
+    });
+}
+
+loadHistory();
+</script>
+{% endblock %}
